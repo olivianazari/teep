@@ -1,0 +1,16 @@
+{
+  "extraction": {
+    "backend": "legacy",
+    "complexity": 1,
+    "cutoff": 10.0,
+    "det_conf": 0.5,
+    "track_conf": 0.5,
+    "leg": "auto",
+    "person": "any"
+  },
+  "video": "video_A.mp4",
+  "frames": 99,
+  "fps": 30.0,
+  "kick_side": "left",
+  "detection_rate": 1.0
+}

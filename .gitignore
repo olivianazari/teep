@@ -1,0 +1,14 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node
+# Note: the built bundle in dist/ IS committed. The README's run instruction is
+# `uv run run.py` with no build step, and FastAPI serves dist/ directly — a
+# clone without it would not start. Its inputs are what stay out.
+frontend/node_modules/
+
+# macOS
+.DS_Store

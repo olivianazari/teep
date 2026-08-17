@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "teep",
+      "runtimeExecutable": ".venv/bin/python3",
+      "runtimeArgs": ["run.py", "--no-browser"],
+      "port": 8000
+    }
+  ]
+}

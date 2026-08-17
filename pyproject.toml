@@ -1,0 +1,32 @@
+[project]
+name = "teep-analyzer"
+version = "1.0.0"
+description = "Local Muay Thai teep analysis — compares an uploaded kick against a fixed reference."
+requires-python = "==3.11.*"
+
+# Versions are pinned exactly. MediaPipe is particular about both the Python
+# version and its numpy/opencv companions, and it is the most likely thing to
+# break on an unfamiliar laptop (spec §11).
+dependencies = [
+    "mediapipe==0.10.21",
+    "opencv-python==4.11.0.86",
+    "numpy==1.26.4",
+    "pandas==2.2.3",
+    "scipy==1.15.2",
+    "fastapi==0.115.12",
+    "uvicorn==0.34.0",
+    "python-multipart==0.0.20",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.5", "httpx==0.28.1"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

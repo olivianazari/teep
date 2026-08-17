@@ -1,0 +1,44 @@
+{
+  "video": "video_A.mp4",
+  "frames": 99,
+  "fps": 30.0,
+  "duration_s": 3.3,
+  "resolution": [
+    1570,
+    1338
+  ],
+  "detection_rate": 1.0,
+  "kick_side": "left",
+  "smoothing_cutoff_hz": 10.0,
+  "scale_refs_m": {
+    "torso_len_m": 0.4795,
+    "kick_leg_len_m": 0.7772,
+    "thigh_len_m": 0.385,
+    "shank_len_m": 0.3606,
+    "apex_guess_frame": 48
+  },
+  "phases": {
+    "chamber_start": 35,
+    "chamber_peak": 39,
+    "apex": 48,
+    "impact_window": [
+      47,
+      49
+    ],
+    "retract_end": 53,
+    "replant": 72,
+    "chamber_knee_angle_deg": 95.71,
+    "apex_knee_angle_deg": 164.42,
+    "apex_extension_ratio": 0.94,
+    "peak_hip_flexion_deg": 96.2,
+    "chamber_to_apex_ms": 300.0,
+    "apex_to_replant_ms": 800.0
+  },
+  "peaks": {
+    "max_kick_ankle_speed_torso_per_s": 8.972,
+    "max_com_speed_torso_per_s": 1.286,
+    "max_trunk_lean_sagittal_deg": 7.47,
+    "min_sup_knee_angle_deg": 132.98,
+    "mean_pelvis_tilt_conf": 0.816
+  }
+}
