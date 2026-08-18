@@ -22,6 +22,23 @@ environment to manage. If you don't have `uv`:
 python3 -m pip install --user uv
 ```
 
+That installs to `~/Library/Python/3.x/bin` on macOS, which is **not on `PATH` by
+default** — `uv: command not found` after a successful install means exactly this. Either
+add it:
+
+```bash
+echo 'export PATH="$HOME/Library/Python/3.9/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+```
+
+or skip `uv` entirely once the environment exists and run the interpreter directly:
+
+```bash
+.venv/bin/python3 run.py
+```
+
+Both start the same server. `--no-browser` suppresses opening a tab, `--port N` moves it
+off 8000.
+
 ### Offline
 
 The app never reaches the network at runtime:
@@ -45,8 +62,11 @@ Four metrics, and only these four:
 |---|---|---|
 | Lead hip flexion | `kick_hip_flexion` | 33% |
 | Lead knee angle | `kick_knee_angle` | 33% |
-| Torso tilt | `trunk_lean_sagittal` | 29% |
+| Body tilt | `trunk_lean_sagittal` | 29% |
 | Rear knee angle | `sup_knee_angle` | 5% |
+
+"Body tilt" is the label the athlete sees; the metric **key** is still `torso_tilt`
+throughout the scorer, the API and the tests.
 
 Two numbers come back, and they are deliberately **never merged**:
 
@@ -135,8 +155,8 @@ controller are all custom; no Radix primitive fits them.
 
 ### Skeleton overlay
 
-The **Skeleton** toggle in the header draws BlazePose's 33-point pose over both videos, on a
-`<canvas>` rather than SVG — it repaints every frame during playback, where reconciling ~40
+Each video pane has its own **skeleton** toggle in its header, drawing BlazePose's 33-point
+pose over that video independently, on a `<canvas>` rather than SVG — it repaints every frame during playback, where reconciling ~40
 SVG nodes at 30 fps would not be free.
 
 Colours are functional, like the phase colours, and are the other sanctioned exception to
@@ -302,5 +322,8 @@ then carry twice the samples.
 | Phase shorter than 4 frames (`MIN_PHASE_FRAMES`) | Dropped, weight redistributed, noted in the UI. |
 | Unreadable or unsupported video | Clear error in the upload dialog. |
 
-`detection_rate` and `mean_pelvis_tilt_conf` are shown in the header. When a score looks
-inexplicable, those two numbers usually explain it.
+`detection_rate` and `mean_pelvis_tilt_conf` come back in every result's `diagnostics`, but
+the redesign removed the results header that displayed them, so they are currently **not
+shown anywhere in the UI**. When a score looks inexplicable those two numbers usually
+explain it immediately, so they are worth a home again — read them from `POST /api/analyze`
+in the meantime. The low-detection warning banner still fires.
