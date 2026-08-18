@@ -697,9 +697,7 @@ Rules that still hold:
 > written-feedback block was removed outright — `FeedbackPanel.tsx` is deleted.
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│ BIGGEST DEVIATION  ⚠ Body is 20° more upright …    [16]  │
-├────────────────────────────┬─────────────────────────────┤
+┌────────────────────────────┬─────────────────────────────┐
 │ YOU  [upload][export][skel] │ IDEAL            [skel]    │
 │   video_B (yours)           │   video_A (reference)      │
 ├────────────────────────────┴─────────────────────────────┤
@@ -725,27 +723,19 @@ an upload with empty figures rather than appearing on result — otherwise uploa
 would inject their height into the column and shrink both videos at the moment the
 athlete wants to look at them.
 
-### Biggest deviation
+**What removing the improvements panel costs.** The feedback engine still runs and
+its sentences still reach the athlete, but only through the timeline's adjustment
+markers — hover for the sentence, click to seek (§8, and Timelines below). Nothing
+now lists the items together, so a fault is only discoverable by finding its
+marker, and the worst one is drawn no larger than the mildest. That is a real
+reduction in what the tool says out loud; it is the design's call, recorded here so
+it is not mistaken for an oversight.
 
-A single-line block above the videos naming the worst reading in the rep —
-`feedback[0]`, which is severity-ranked, so it is the item that actually drove the
-score down rather than merely the lowest number. Clicking it seeks both videos to
-its `worst_frame`. Tinted with the same two variants as the timeline's hover tip
-and keyed on the same threshold, so a marker and this block never disagree.
-
-It shows **one** item, not a list. The scorer is worst-fault dominant now
-(`AGGREGATION_POWER`), so the rep's score has a single principal cause and naming
-several would blur the connection between the number and its reason.
-
-This partly restores what removing the improvements panel cost. The timeline
-markers do carry every yellow and red reading, but they are all the same size and
-only give up their sentence on hover, so the worst fault was no more visible than
-the fifth. What is still gone is any view of all the items at once.
-
-The block renders in every state at a fixed 56px — verified identical before and
-after an upload — because the video row absorbs all the slack and a block that
-appeared on result would shrink both videos exactly when the athlete wants to look
-at them.
+A single-line "biggest deviation" block above the videos was built and then removed
+at the same call. If it comes back, it wants `feedback[0]` — the list is
+severity-ranked, so item 0 is the reading that drove the score down rather than
+merely the lowest number — and it must render in every state at a fixed height, or
+uploading shrinks both videos.
 
 ### Pane header buttons — `IconButton`
 
