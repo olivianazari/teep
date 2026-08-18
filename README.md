@@ -186,43 +186,85 @@ the thing the test certifies is the thing the server serves.
 Four numbers in `backend/config.py`, and nothing else:
 
 ```python
-FULL_CREDIT_FRAC  = 0.15   # of the reference's active-window range
-ZERO_CREDIT_FRAC  = 0.50
-FULL_CREDIT_FLOOR = 8.0    # degrees
-ZERO_CREDIT_FLOOR = 25.0
+FULL_CREDIT_FRAC  = 0.13   # of the reference's active-window range
+ZERO_CREDIT_FRAC  = 0.44
+FULL_CREDIT_FLOOR = 7.0    # degrees
+ZERO_CREDIT_FLOOR = 22.0
 ```
 
-Loosening these compresses the top of the scale. Watch the **spread** between the
-best- and worst-scoring phase on a rep with a known fault: once that falls below
-about 10 points the tool has stopped discriminating, and past roughly
-`0.30 / 0.90 / 15 / 45` the feedback panel empties out entirely and every rep
-comes back clean.
+Each metric gets a full-credit band and a zero-credit band, both derived from the
+reference at load time:
 
-**These are loosened from the spec's `0.08 / 0.25 / 4.0 / 12.0`**, which graded too harshly
-on real footage — a competent teep with one clear postural fault scored 65.
+```
+full_credit = max(FULL_CREDIT_FRAC × range_A, FULL_CREDIT_FLOOR)
+zero_credit = max(ZERO_CREDIT_FRAC × range_A, ZERO_CREDIT_FLOOR)
+```
 
-The floors were doing most of the damage. Tolerances are `max(frac × range, floor)`, and
-two of the four metrics have ranges small enough that the floor always won:
+A frame inside the full band scores 100, outside the zero band scores 0, and ramps
+linearly between. Strictness lives in the band widths, never in the shape of the ramp.
 
-| metric | range | at spec values | bound by |
-|---|---|---|---|
-| lead_hip_flexion | 87.0° | ±7.0 / ±21.8 | proportional |
-| lead_knee_angle | 97.2° | ±7.8 / ±24.3 | proportional |
-| torso_tilt | 46.5° | ±4.0 / ±12.0 | **floor** |
-| rear_knee_angle | 33.5° | ±4.0 / ±12.0 | **floor** |
+Because the bands come from `range_A` — the metric's spread across the reference's active
+window — re-shooting the reference retunes the grading automatically. **Never hardcode the
+degree values.** These are what the formula currently yields:
 
-So torso tolerated ±12° while the knee tolerated ±24.3°, despite torso carrying 29% of the
-weight — putting 44% of its frames on a hard zero. Raising the floors alongside the
-fractions keeps the four metrics comparable to one another rather than just shifting every
-score upward.
+| metric | range_A | full | zero | bound by |
+|---|---|---|---|---|
+| lead_hip_flexion | 87.0° | ±11.3° | ±38.3° | proportional |
+| lead_knee_angle | 97.2° | ±12.6° | ±42.8° | proportional |
+| torso_tilt | 46.5° | ±7.0° | ±22.0° | **floor** |
+| rear_knee_angle | 33.5° | ±7.0° | ±22.0° | **floor** |
 
 Raise all four to grade more softly, lower them to grade harder. The self-comparison gate
 returns exactly 100.0 at any setting, since a zero deviation always scores full credit — so
-it does not constrain your choice here.
+it never constrains your choice here.
 
-Expect the feedback panel to be populated on most uploads. That is what strict grading
-means. If you ever find it empty on reps that clearly have faults, the dial has gone too
-soft.
+### Why these values
+
+**Loosened from the spec's `0.08 / 0.25 / 4.0 / 12.0`**, which graded too harshly on real
+footage: a competent teep with one clear postural fault scored 65.
+
+The floors were doing most of the damage. Two of the four metrics have ranges small enough
+that the floor always wins, and at the spec's values that left `torso_tilt` tolerating ±12°
+while `lead_knee_angle` tolerated ±24.3° — despite torso carrying 29% of the weight against
+the knee's 33%. That put 44% of torso's frames on a hard zero.
+
+Raising the floors alongside the fractions is what keeps the four metrics comparable to one
+another, rather than just shifting every score upward. Note the bottom two rows above are
+**still floor-bound** at the current setting; that is deliberate. `rear_knee_angle` spans
+only 33.5° across the whole kick, close to MediaPipe's own error on the joint, which is why
+it carries just 5% weight and a wide floor. Don't "fix" it by tightening its band.
+
+### Reading the dial
+
+Watch the **spread** between the best- and worst-scoring phase on a rep with a known fault.
+Below about 10 points the tool has stopped discriminating. Past roughly `0.30 / 0.90 / 15 /
+45` every rep comes back clean and the timeline shows no markers at all.
+
+Expect markers on most uploads — that is what strict grading means. If reps with obvious
+faults stop producing them, the dial has gone too soft.
+
+### How much feedback appears
+
+Three constants downstream of the dial decide how much of what the scorer found actually
+reaches you:
+
+```python
+FEEDBACK_SUPPRESS_ABOVE = 80.0   # a metric scoring above this in a phase is not flagged
+FEEDBACK_TOP_N          = 5      # most items rendered
+FEEDBACK_MAX_PER_METRIC = 2      # most items about any one metric
+```
+
+`FEEDBACK_SUPPRESS_ABOVE` is matched to `GRADE_GOOD` in `frontend/src/lib/grade.ts`, so a
+metric card reads green exactly when the engine stays silent about it. **Move the two
+together** or the UI will say one thing and the feedback another.
+
+The per-metric cap exists because severity order alone let one metric take every slot: on a
+real upload all three went to `torso_tilt`, burying a `lead_knee_angle` at 76.6 and a
+`lead_hip_flexion` at 71.7 that the scorer had already found. Raising `FEEDBACK_TOP_N`
+alone would not have helped — slots four and five would have gone to `torso_tilt` too.
+
+None of the three can manufacture feedback. Everything still has to fall below the
+suppression threshold first, so a genuinely clean rep produces nothing.
 
 ### Timing is a separate dial
 
@@ -257,7 +299,7 @@ then carry twice the samples.
 | Kicking leg differs from the reference | **Refused.** No mirroring exists; comparing sign-flipped columns produces a confidently wrong score. |
 | No kick detected (hip flexion range < 8°) | Refused. |
 | Detection rate below 85% | Scored anyway, with a warning banner. |
-| Phase shorter than 5 frames | Dropped, weight redistributed, noted in the UI. |
+| Phase shorter than 4 frames (`MIN_PHASE_FRAMES`) | Dropped, weight redistributed, noted in the UI. |
 | Unreadable or unsupported video | Clear error in the upload dialog. |
 
 `detection_rate` and `mean_pelvis_tilt_conf` are shown in the header. When a score looks
