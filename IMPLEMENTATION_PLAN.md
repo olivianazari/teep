@@ -945,7 +945,7 @@ is silent, these decisions stand:
 
 | Thing | Decision |
 |---|---|
-| `timing_score` | **Now displayed**, in its own card beside the overall score, with its own grade tint. The design has no slot for it, but a rep scoring well while badly mistimed with nothing on screen saying so was the worse deviation. §6.4 still forbids merging the two numbers, and two tinted cards keep them visibly separate. |
+| `timing_score` | **Computed and returned, not displayed.** It was briefly given a card beside the overall score; that was removed in favour of the page showing a single score. §6.4 still forbids merging it into the overall, so the two remain separate numbers in the API. Restoring it is one card in the score row. |
 | Diagnostics (§12) | `detection_rate` / `mean_pelvis_tilt_conf` are in the API but no longer shown. The low-detection **warning** still appears. |
 | Warnings banner | Conditional, so it shifts the layout when it fires. Not in the design, and the improvements panel that could have absorbed it is gone, so it now has nowhere stable to live. |
 | SSE progress | Streamed but not displayed — see the loading state above. |

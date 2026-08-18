@@ -110,21 +110,36 @@ def test_run_penalty_spreads_compression_rather_than_clumping():
 # §5 — tolerances are derived, not hardcoded
 # ---------------------------------------------------------------------------
 def test_tolerances_follow_the_formula(ref):
+    """
+    Bands come from the reference's own stability, never from hardcoded degrees.
+
+    unit = max(median |frame-to-frame delta|, median |second difference|) — one
+    frame of legitimate motion, or the metric's own jitter, whichever is larger.
+    """
     import numpy as np
 
     idx = ref.active_index
     for key, meta in config.METRICS.items():
         v = ref.df[meta["column"]].to_numpy(dtype=float)[idx]
-        rng = float(np.nanmax(v) - np.nanmin(v))
+        unit = max(
+            float(np.nanmedian(np.abs(np.diff(v)))),
+            float(np.nanmedian(np.abs(np.diff(v, n=2)))),
+        )
+        assert ref.tolerances[key]["unit"] == pytest.approx(unit)
         assert ref.tolerances[key]["full"] == pytest.approx(
-            max(config.FULL_CREDIT_FRAC * rng, config.FULL_CREDIT_FLOOR))
+            config.FULL_CREDIT_STABILITY * unit)
         assert ref.tolerances[key]["zero"] == pytest.approx(
-            max(config.ZERO_CREDIT_FRAC * rng, config.ZERO_CREDIT_FLOOR))
+            config.ZERO_CREDIT_STABILITY * unit)
 
 
 def test_tolerances_rescale_when_the_reference_changes(ref):
-    """A wider reference range must widen the bands, or they would go stale."""
-    import numpy as np
+    """
+    A reference that moves through twice the amplitude must widen the bands.
+
+    Otherwise re-shooting video_A would leave stale constants grading the new
+    footage — the whole reason the bands are derived rather than written down.
+    """
+    from backend.reference import derive_tolerances
 
     doubled = ref.df.copy()
     for meta in config.METRICS.values():
@@ -135,9 +150,69 @@ def test_tolerances_rescale_when_the_reference_changes(ref):
     widened = derive_tolerances(doubled, ref.active_index)
     for key in config.METRICS:
         assert widened[key]["range"] > ref.tolerances[key]["range"]
-        # Only bands sitting above their floor are expected to move.
-        if ref.tolerances[key]["full"] > config.FULL_CREDIT_FLOOR:
-            assert widened[key]["full"] > ref.tolerances[key]["full"]
+        assert widened[key]["full"] > ref.tolerances[key]["full"]
+        assert widened[key]["zero"] > ref.tolerances[key]["zero"]
+
+
+def test_a_noisy_metric_earns_a_wider_band(ref):
+    """
+    rear_knee_angle stays tolerant without a special case.
+
+    It barely moves across the kick, so a fraction-of-range rule made its band
+    the narrowest of the four — but it is also the metric MediaPipe tracks worst,
+    and its second difference exceeds its first. The jitter term is what picks
+    that up.
+    """
+    import numpy as np
+
+    idx = ref.active_index
+    v = ref.df[config.METRICS["rear_knee_angle"]["column"]].to_numpy(dtype=float)[idx]
+    motion = float(np.nanmedian(np.abs(np.diff(v))))
+    noise = float(np.nanmedian(np.abs(np.diff(v, n=2))))
+    assert noise > motion, "fixture assumption: rear knee is noise-dominated"
+    assert ref.tolerances["rear_knee_angle"]["unit"] == pytest.approx(noise)
+
+
+# ---------------------------------------------------------------------------
+# §7 — range of motion, and worst-fault aggregation
+# ---------------------------------------------------------------------------
+def test_power_mean_is_worst_sensitive():
+    """
+    Below power 1 a single bad component must drag the result below the mean.
+
+    With the arithmetic mean the worst reading in a real rep controlled 5.8% of
+    the final score, because it was averaged three separate times on the way up.
+    """
+    from backend.scoring import power_mean
+
+    vals, weights = [100.0, 100.0, 100.0, 20.0], [0.25] * 4
+    assert power_mean(vals, weights, 1.0) == pytest.approx(80.0)
+    assert power_mean(vals, weights, config.AGGREGATION_POWER) < 80.0
+
+
+def test_power_mean_keeps_a_perfect_rep_at_exactly_100():
+    """This is what keeps the §14 gate intact at any aggregation power."""
+    from backend.scoring import power_mean
+
+    for power in (1.0, 0.5, 0.0, -1.0, -2.0):
+        assert power_mean([100.0] * 4, [0.25] * 4, power) == pytest.approx(100.0)
+
+
+def test_rom_penalises_undershoot_and_overshoot(ref):
+    """
+    Amplitude is scored on the ratio, both directions.
+
+    Travelling through half the reference's range is a different technique;
+    so is travelling through 1.5x. Neither is the reference.
+    """
+    from backend.scoring import band_score
+
+    exact = band_score(0.0, config.ROM_FULL_CREDIT, config.ROM_ZERO_CREDIT)
+    under = band_score(abs(1.0 - 0.45), config.ROM_FULL_CREDIT, config.ROM_ZERO_CREDIT)
+    over = band_score(abs(1.0 - 1.55), config.ROM_FULL_CREDIT, config.ROM_ZERO_CREDIT)
+    assert exact == 100.0
+    assert under < 30.0 and over < 30.0
+    assert under == pytest.approx(over)
 
 
 # ---------------------------------------------------------------------------

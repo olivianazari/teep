@@ -13,6 +13,8 @@ uniformly would be wrong in a different way each time:
 
 from __future__ import annotations
 
+import math
+
 from typing import Optional
 
 import numpy as np
@@ -41,8 +43,41 @@ def band_score(delta: float, full: float, zero: float) -> float:
     return 100.0 * (zero - delta) / (zero - full)
 
 
+def power_mean(values: list[float], weights: list[float], power: float) -> float:
+    """
+    Weighted power mean, on a 0-100 scale.
+
+    power = 1 is the arithmetic mean, where every fault dilutes into the
+    average. Below 1 the worst value dominates, which is how a coach grades a
+    rep — by its worst fault, not its average correctness. power = 0 is the
+    geometric mean, taken as the limit.
+
+    All-100 inputs return exactly 100 at any power, which is what keeps the §14
+    self-comparison gate intact.
+    """
+    total_w = sum(weights)
+    if total_w <= 0:
+        return 0.0
+
+    # A single zero means zero for power <= 0, which is the intended behaviour:
+    # nothing rescues a rep that scored nothing on a weighted component. Clamp
+    # off exact zeros so the maths stays finite.
+    vals = [max(min(v, 100.0), 1e-9) for v in values]
+
+    if abs(power) < 1e-9:
+        acc = sum(w * math.log(v) for v, w in zip(vals, weights)) / total_w
+        return math.exp(acc)
+    acc = sum(w * (v ** power) for v, w in zip(vals, weights)) / total_w
+    return acc ** (1.0 / power)
+
+
 def _composite(metric_scores: dict) -> float:
-    return sum(metric_scores[k] * METRIC_W[k] for k in config.METRICS)
+    keys = list(config.METRICS)
+    return power_mean(
+        [metric_scores[k] for k in keys],
+        [METRIC_W[k] for k in keys],
+        config.AGGREGATION_POWER,
+    )
 
 
 class Scorer:
@@ -253,6 +288,45 @@ class Scorer:
             "method": "static",
         }
 
+    def _score_rom(self) -> dict:
+        """
+        Amplitude, per metric, over the active window.
+
+        Per-frame comparison is blind to this: a kick travelling through half the
+        reference's trunk rotation, at the right times and in the right order,
+        reads as slightly-off-everywhere rather than as the different technique
+        it is. Penalised in both directions — overshooting the reference is not
+        better form, it is a different movement.
+        """
+        a_idx = self.ref.active_index
+        b_mask = np.isin(self.b_phase, config.ACTIVE_PHASES)
+        b_idx = np.flatnonzero(b_mask)
+
+        metrics, ratios = {}, {}
+        for key, meta in config.METRICS.items():
+            a = self.ref.df[meta["column"]].to_numpy(dtype=float)[a_idx]
+            b = self.b_vals[key][b_idx]
+            a_rng = float(np.nanmax(a) - np.nanmin(a)) if a.size else 0.0
+            b_rng = float(np.nanmax(b) - np.nanmin(b)) if b.size else 0.0
+            if a_rng <= 1e-6:
+                continue
+            ratio = b_rng / a_rng
+            metrics[key] = band_score(
+                abs(1.0 - ratio), config.ROM_FULL_CREDIT, config.ROM_ZERO_CREDIT
+            )
+            ratios[key] = {
+                "ratio": round(ratio, 3),
+                "range_a": round(a_rng, 1),
+                "range_b": round(b_rng, 1),
+                "score": round(metrics[key], 1),
+            }
+
+        return {
+            "score": _composite(metrics) if metrics else 100.0,
+            "metric_scores": metrics,
+            "metrics": ratios,
+        }
+
     # -- aggregate ---------------------------------------------------------
     def run(self) -> dict:
         raw: list[dict] = []
@@ -289,5 +363,26 @@ class Scorer:
         for p in kept:
             p["weight"] = config.PHASE_WEIGHTS[p["name"]] / total_w
 
-        overall = sum(p["score"] * p["weight"] for p in kept)
-        return {"phases": kept, "dropped_phases": dropped, "overall": overall}
+        shape = power_mean(
+            [p["score"] for p in kept],
+            [p["weight"] for p in kept],
+            config.AGGREGATION_POWER,
+        )
+
+        # Shape and amplitude are combined through the same worst-sensitive mean,
+        # so a rep that hits every position but only travels half as far cannot
+        # average its way back to a good score.
+        rom = self._score_rom()
+        overall = power_mean(
+            [shape, rom["score"]],
+            [1.0 - config.ROM_WEIGHT, config.ROM_WEIGHT],
+            config.AGGREGATION_POWER,
+        )
+
+        return {
+            "phases": kept,
+            "dropped_phases": dropped,
+            "overall": overall,
+            "shape_score": shape,
+            "rom": rom,
+        }

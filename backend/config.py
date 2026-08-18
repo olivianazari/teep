@@ -111,10 +111,29 @@ METRICS = {
 #
 # Raising the floors alongside the fractions keeps the four metrics comparable
 # to each other rather than just moving every score up.
-FULL_CREDIT_FRAC = 0.13
-ZERO_CREDIT_FRAC = 0.44
-FULL_CREDIT_FLOOR = 7.0
-ZERO_CREDIT_FLOOR = 22.0
+# Bands come from the reference's OWN stability, not from a fraction of its
+# range. video_A is the rubric: its per-frame values are the answer key, and how
+# tightly it defines an answer is set by how much it moves and wobbles.
+#
+#     unit = max(median |frame-to-frame delta|, median |second difference|)
+#     full = FULL_CREDIT_STABILITY * unit
+#     zero = ZERO_CREDIT_STABILITY * unit
+#
+# The first term is one frame's worth of legitimate motion: a deviation smaller
+# than that cannot be told apart from a one-frame timing wobble. The second is
+# the metric's own jitter — for a smooth signal the second difference is far
+# below the first, but for a noisy one it is not, so a metric MediaPipe measures
+# badly earns a wider band instead of being given one by hand.
+#
+# That is how rear_knee_angle stays tolerant without a special case: it barely
+# moves (median delta 2.12 deg) but is noisy (second difference 2.61), so the
+# jitter term wins and sets its band.
+#
+# Replaces the old 0.13/0.44 fraction-of-range dial with its 7.0/22.0 floors,
+# which allowed a metric to sit an eighth of the entire movement off at every
+# frame and still score 100.
+FULL_CREDIT_STABILITY = 3.0
+ZERO_CREDIT_STABILITY = 10.0
 
 # Static phases (ready/reset) get their bands multiplied by this.
 #
@@ -130,7 +149,49 @@ ZERO_CREDIT_FLOOR = 22.0
 # moving, so the stance is judged on a tighter band than the movement. Raise
 # toward 1.0 to go back to kick-sized tolerances; lower to grade the stance
 # harder.
-STATIC_TOLERANCE_SCALE = 0.35
+STATIC_TOLERANCE_SCALE = 0.5
+
+# ---------------------------------------------------------------------------
+# Range of motion
+# ---------------------------------------------------------------------------
+# Per-frame comparison alone cannot see amplitude. A teep that travels through
+# half the reference's trunk rotation, at the right times and in the right
+# order, reads as "slightly off at each frame" rather than as the different
+# technique it is. Measured on a real bad rep: 19.3 deg of trunk rotation
+# against the reference's 46.5, while every per-frame band still called it 79.
+#
+# Scored on the ratio of the upload's active-window range to the reference's,
+# penalised in BOTH directions — overshooting the reference is not better form,
+# it is a different movement.
+#
+#     deviation = |1 - range_B / range_A|
+ROM_FULL_CREDIT = 0.12    # within 12% of the reference's amplitude
+ROM_ZERO_CREDIT = 0.70    # less than 55% (or more than 145%) scores nothing
+# How much of the overall score amplitude carries, against per-frame shape.
+ROM_WEIGHT = 0.40
+
+# ---------------------------------------------------------------------------
+# Aggregation
+# ---------------------------------------------------------------------------
+# Exponent of the weighted power mean used to combine phase scores, and metric
+# scores within a frame.
+#
+#   1.0  arithmetic mean — every fault dilutes into the average
+#   0.0  geometric mean
+#  -1.0  harmonic mean — a single near-zero drags the whole result down
+#
+# Set to -1.0. Calibrated against two real reps: a competent teep scores 84 and
+# a leg-only one with no counterbalance scores 56, against 84.5 and 79.0 under
+# the arithmetic mean. The good rep barely moves; the bad one falls where it
+# belongs, which is the whole point.
+#
+# Below 1.0 the worst reading dominates, which is how a coach grades: the rep is
+# judged by its worst fault, not by its average correctness. With the plain mean
+# the worst reading in a real bad rep (torso tilt at 14.5) controlled 5.8% of the
+# final number, because it was averaged three separate times on the way up.
+#
+# Any value leaves the §14 gate intact: a power mean of all-100s is exactly 100.
+AGGREGATION_POWER = -1.0
 
 # ---------------------------------------------------------------------------
 # Phases (spec §7.6)

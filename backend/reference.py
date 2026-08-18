@@ -167,15 +167,39 @@ def build_features(df: pd.DataFrame, index: np.ndarray, znorm: dict) -> np.ndarr
 
 
 def derive_tolerances(df: pd.DataFrame, index: np.ndarray) -> dict:
-    """Tolerance bands from the reference's own active-window range (spec §5)."""
+    """
+    Tolerance bands from the reference's own stability.
+
+    video_A is the rubric. Its per-frame values are the answer key, and how
+    tightly it defines an answer comes from how much it moves and how much it
+    wobbles — not from a fraction of its total range, which let a metric sit an
+    eighth of the whole movement off at every frame and still score 100.
+
+    The unit is the larger of one frame's legitimate motion and the metric's own
+    jitter. A deviation below the first is indistinguishable from a one-frame
+    timing wobble; the second means a metric MediaPipe tracks badly earns a wider
+    band rather than being handed one by a special case.
+    """
     out = {}
     for key, meta in config.METRICS.items():
         v = df[meta["column"]].to_numpy(dtype=float)[index]
         rng = float(np.nanmax(v) - np.nanmin(v))
+
+        step = np.abs(np.diff(v))
+        jitter = np.abs(np.diff(v, n=2))
+        motion = float(np.nanmedian(step)) if step.size else 0.0
+        noise = float(np.nanmedian(jitter)) if jitter.size else 0.0
+        unit = max(motion, noise)
+        # A metric that never moves at all would otherwise get a zero-width band
+        # and fail on floating-point dust.
+        if not np.isfinite(unit) or unit <= 1e-6:
+            unit = 1.0
+
         out[key] = {
             "range": rng,
-            "full": max(config.FULL_CREDIT_FRAC * rng, config.FULL_CREDIT_FLOOR),
-            "zero": max(config.ZERO_CREDIT_FRAC * rng, config.ZERO_CREDIT_FLOOR),
+            "unit": unit,
+            "full": config.FULL_CREDIT_STABILITY * unit,
+            "zero": config.ZERO_CREDIT_STABILITY * unit,
         }
     return out
 

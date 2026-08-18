@@ -76,6 +76,11 @@ def analyze(ref: Reference, df_b: pd.DataFrame, summary_b: dict) -> dict:
 
     return {
         "overall_score": round(scored["overall"], 1),
+        # The two halves of the overall, so the UI can say why a score is low
+        # rather than only that it is.
+        "shape_score": round(scored["shape_score"], 1),
+        "rom_score": round(scored["rom"]["score"], 1),
+        "rom": scored["rom"]["metrics"],
         "timing_score": round(timing, 1),
         "kick_side": side_b or ref.kick_side,
         "fps": round(fps_b, 3),

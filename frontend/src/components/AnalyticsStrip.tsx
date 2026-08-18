@@ -4,14 +4,12 @@ import { GRADE_CLASS, GRADE_INK, gradeOf } from '@/lib/grade'
 import { Sparkline } from './Sparkline'
 
 /**
- * Score row — overall score, timing score, then the four metric cards.
+ * Score row — the overall score followed by the four metric cards.
  *
- * Overall and timing are deliberately two cards rather than one figure. They
- * measure different things (shape after alignment vs tempo from the warping
- * path) and §6.4 forbids merging them: alignment warps time away, so a slow
- * sloppy teep warps neatly onto a fast crisp one and scores well on shape. Each
- * carries its own grade tint, because a rep can genuinely be green on one and
- * red on the other — that combination is the point.
+ * `timing_score` is deliberately NOT shown. It is still computed and returned
+ * (§6.4 forbids folding it into the overall score, so the two must stay
+ * separate numbers), but the page shows one score. Restoring it is a card in
+ * this row and nothing else.
  *
  * Card order follows the Figma design (lead hip, lead knee, rear knee, torso),
  * which differs from METRIC_ORDER's weighting order.
@@ -111,22 +109,6 @@ export function AnalyticsStrip({ reference, result, frameA, frameB }: Props) {
         <span className="text-[10px] uppercase leading-none text-ink">Overall score</span>
         <span className="text-[40px] uppercase leading-none tabular-nums text-ink">
           {result ? Math.round(result.overall_score) : 'xx'}
-        </span>
-      </div>
-
-      {/* Tempo, scored from the warping path rather than from post-warp
-          deviation. Narrower than the overall card: it is the secondary
-          reading, and the metric cards should not lose more width than
-          necessary. */}
-      <div
-        className={`flex w-[160px] shrink-0 flex-col gap-[10px] rounded-card border p-[25px] ${
-          GRADE_CLASS[gradeOf(result?.timing_score)]
-        }`}
-        title="Tempo, measured from the time alignment. Kept separate from the overall score, which measures shape."
-      >
-        <span className="text-[10px] uppercase leading-none text-ink">Timing</span>
-        <span className="text-[40px] uppercase leading-none tabular-nums text-ink">
-          {result ? Math.round(result.timing_score) : 'xx'}
         </span>
       </div>
 

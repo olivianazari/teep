@@ -68,14 +68,19 @@ Four metrics, and only these four:
 "Body tilt" is the label the athlete sees; the metric **key** is still `torso_tilt`
 throughout the scorer, the API and the tests.
 
-Two numbers come back, and they are deliberately **never merged**:
+The overall score has two halves, combined through the worst-sensitive mean:
 
-- **Overall score** — shape, measured after time alignment.
-- **Timing score** — tempo, measured from the warping path itself.
+- **Shape** — per-frame position against the reference, after time alignment.
+- **Range of motion** — whether the movement travelled as far as the reference's.
 
-Alignment warps time away, so a slow, sloppy teep would otherwise warp neatly onto a fast,
-crisp one and score well. The coaching response to "wrong shape" and "wrong tempo" are
-entirely different, so they stay apart.
+Both are returned separately as `shape_score` and `rom_score`, so a low overall can always
+be attributed to one or the other.
+
+A third number, **`timing_score`**, is computed and returned but **not displayed**. Time
+alignment warps tempo away before shape is measured, so tempo has to be scored separately
+from the warping path — and §6.4 forbids folding it into the overall, since the coaching
+response to "wrong shape" and "wrong tempo" are entirely different. The UI shows one score
+by choice; restoring timing is a card in the score row and nothing else.
 
 ---
 
@@ -203,108 +208,93 @@ the thing the test certifies is the thing the server serves.
 
 ## Tuning strictness
 
-Four numbers in `backend/config.py`, and nothing else:
+`video_A` is the rubric. Its per-frame values are the answer key, and **how tightly it
+defines an answer comes from its own stability** — not from a fraction of its range.
 
 ```python
-FULL_CREDIT_FRAC  = 0.13   # of the reference's active-window range
-ZERO_CREDIT_FRAC  = 0.44
-FULL_CREDIT_FLOOR = 7.0    # degrees
-ZERO_CREDIT_FLOOR = 22.0
+FULL_CREDIT_STABILITY = 3.0
+ZERO_CREDIT_STABILITY = 10.0
 ```
 
-Each metric gets a full-credit band and a zero-credit band, both derived from the
-reference at load time:
-
 ```
-full_credit = max(FULL_CREDIT_FRAC × range_A, FULL_CREDIT_FLOOR)
-zero_credit = max(ZERO_CREDIT_FRAC × range_A, ZERO_CREDIT_FLOOR)
+unit = max(median |frame-to-frame delta|, median |second difference|)
+full = FULL_CREDIT_STABILITY * unit
+zero = ZERO_CREDIT_STABILITY * unit
 ```
 
-A frame inside the full band scores 100, outside the zero band scores 0, and ramps
-linearly between. Strictness lives in the band widths, never in the shape of the ramp.
+The first term is one frame of legitimate motion: a deviation smaller than that cannot be
+told apart from a one-frame timing wobble. The second is the metric's own jitter — for a
+clean signal it sits far below the first, but for a noisy one it does not, so **a metric
+MediaPipe tracks badly earns a wider band instead of being handed one by a special case**.
+That is how `rear_knee_angle` stays tolerant without one: it barely moves (median step
+2.12°) but is noisy (second difference 2.61°), so the jitter term sets its band.
 
-Because the bands come from `range_A` — the metric's spread across the reference's active
-window — re-shooting the reference retunes the grading automatically. **Never hardcode the
-degree values.** These are what the formula currently yields:
+| metric | unit | full | zero |
+|---|---|---|---|
+| lead_hip_flexion | 4.71° | ±14.1° | ±47.1° |
+| lead_knee_angle | 6.19° | ±18.6° | ±61.9° |
+| torso_tilt | 2.23° | ±6.7° | ±22.3° |
+| rear_knee_angle | 2.61° | ±7.8° | ±26.1° |
 
-| metric | range_A | full | zero | bound by |
-|---|---|---|---|---|
-| lead_hip_flexion | 87.0° | ±11.3° | ±38.3° | proportional |
-| lead_knee_angle | 97.2° | ±12.6° | ±42.8° | proportional |
-| torso_tilt | 46.5° | ±7.0° | ±22.0° | **floor** |
-| rear_knee_angle | 33.5° | ±7.0° | ±22.0° | **floor** |
+This replaced a fraction-of-range dial (`0.13 / 0.44` with 7°/22° floors) that let a metric
+sit an eighth of the entire movement off at **every** frame and still score 100.
 
-Raise all four to grade more softly, lower them to grade harder. The self-comparison gate
-returns exactly 100.0 at any setting, since a zero deviation always scores full credit — so
-it never constrains your choice here.
+## Range of motion
 
-### Why these values
-
-**Loosened from the spec's `0.08 / 0.25 / 4.0 / 12.0`**, which graded too harshly on real
-footage: a competent teep with one clear postural fault scored 65.
-
-The floors were doing most of the damage. Two of the four metrics have ranges small enough
-that the floor always wins, and at the spec's values that left `torso_tilt` tolerating ±12°
-while `lead_knee_angle` tolerated ±24.3° — despite torso carrying 29% of the weight against
-the knee's 33%. That put 44% of torso's frames on a hard zero.
-
-Raising the floors alongside the fractions is what keeps the four metrics comparable to one
-another, rather than just shifting every score upward. Note the bottom two rows above are
-**still floor-bound** at the current setting; that is deliberate. `rear_knee_angle` spans
-only 33.5° across the whole kick, close to MediaPipe's own error on the joint, which is why
-it carries just 5% weight and a wide floor. Don't "fix" it by tightening its band.
-
-### Reading the dial
-
-Watch the **spread** between the best- and worst-scoring phase on a rep with a known fault.
-Below about 10 points the tool has stopped discriminating. Past roughly `0.30 / 0.90 / 15 /
-45` every rep comes back clean and the timeline shows no markers at all.
-
-Expect markers on most uploads — that is what strict grading means. If reps with obvious
-faults stop producing them, the dial has gone too soft.
-
-### How much feedback appears
-
-One constant:
+Per-frame comparison is blind to amplitude. A teep that travels through half the
+reference's trunk rotation, at the right times and in the right order, reads as
+slightly-off-everywhere rather than as the different technique it is.
 
 ```python
-FEEDBACK_SUPPRESS_ABOVE = 80.0   # a metric scoring above this in a phase is not flagged
+ROM_FULL_CREDIT = 0.12   # within 12% of the reference's amplitude
+ROM_ZERO_CREDIT = 0.70
+ROM_WEIGHT      = 0.40   # share of the overall score
 ```
 
-Every `(metric, phase)` pair at or below it becomes a timeline marker — the list is **not
-truncated**. It was once capped (top 5, at most 2 per metric) back when feedback was a
-written list that had to stay short; markers are now the only surface, and a cap there
-hides a fault the scorer found with nothing else on the page to reveal it.
+Scored on `|1 - range_B / range_A|`, penalised **both** ways — overshooting the reference
+is not better form, it is a different movement.
 
-`FEEDBACK_SUPPRESS_ABOVE` is matched to `GRADE_GOOD` in `frontend/src/lib/grade.ts`, so
-the markers are exactly the yellow and red readings and a green metric card never has a
-marker under it. **Move the two together.**
+This is what catches a genuinely bad rep. Measured on one: 19.3° of trunk rotation against
+the reference's 46.5°, while every per-frame band still called the rep 79.
 
-The threshold cannot manufacture feedback: a genuinely clean rep clears it everywhere and
-produces no markers at all.
-
-### The stance is judged more strictly than the movement
+## Worst fault dominates
 
 ```python
-STATIC_TOLERANCE_SCALE = 0.35
+AGGREGATION_POWER = -1.0    # 1.0 arithmetic, 0.0 geometric, -1.0 harmonic
 ```
 
-`ready` and `reset` are scored median-against-median, but through bands derived from the
-*kick's* range. A kick's range is enormous next to a held stance — lead hip flexion
-tolerates ±11.3° of full credit, while two people standing in a guard differ by about 2°.
-Unscaled, both phases returned **exactly 100.0 on essentially every upload**, handing out
-13.3% of the total weight as free marks and floating every score upward: a rep whose kick
-phases averaged 75 still came out at 80.
+Scores combine through a weighted **power mean** rather than an arithmetic one, both across
+metrics within a frame and across phases. Below 1.0 the worst reading dominates, which is
+how a coach grades — by the worst fault, not by average correctness.
 
-A deviation that is unremarkable mid-kick is meaningful when nothing is moving, so the
-stance gets a tighter band. Raise toward 1.0 for kick-sized tolerances, lower to grade the
-stance harder.
+Under the arithmetic mean the worst reading in a real bad rep (`torso_tilt` in `retraction`,
+14.5) controlled **5.8%** of the final number, because it was averaged three separate times
+on the way up: metrics into a frame, frames into a phase, phases into the overall.
+
+Any power leaves the self-comparison gate intact — a power mean of all-100s is exactly 100.
+
+### Calibration
+
+Measured on two real reps, before and after:
+
+| | competent teep | leg-only teep |
+|---|---|---|
+| old (mean, no ROM) | 84.5 | 79.0 |
+| **now** | **84.1** | **56.3** |
+
+The good rep barely moves; the bad one falls from green to red. That asymmetry is the point
+— the changes target what was actually wrong rather than shifting the whole scale, which is
+all the old dial could do.
+
+**Calibrated on two clips.** That is thin. If a rep scores in a way you disagree with, the
+levers in order of effect are `ROM_WEIGHT`, `AGGREGATION_POWER`, then the two stability
+multipliers.
 
 ### Timing is a separate dial
 
 `TIMING_DEV_FULL` / `TIMING_DEV_ZERO` (0.20 / 1.00) govern the timing score and are
 untouched by the above. A phase within ~±15% of the reference duration scores 100; 2× too
-slow or fast scores 0.
+slow or fast scores 0. Still computed and returned; not shown (see *What gets scored*).
 
 ### A note on `MIN_PHASE_FRAMES`
 
