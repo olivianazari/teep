@@ -36,15 +36,15 @@ TEMPLATES = {
 
 def build_feedback(phases: list[dict], tolerances: dict) -> list[dict]:
     """
-    Rank every (metric, phase) pair and render the worst few.
+    Rank every (metric, phase) pair and return the ones worth flagging.
 
-    A pair scoring above FEEDBACK_SUPPRESS_ABOVE is good enough not to flag, so
-    a clean rep legitimately produces zero items — that is a deliberate state,
-    not an empty container to be filled with filler.
+    Every pair scoring at or below FEEDBACK_SUPPRESS_ABOVE is returned, ranked
+    worst-first. That threshold matches the UI's green band, so the list is
+    exactly the set of yellow and red readings — one timeline marker each.
 
-    Selection is severity order subject to FEEDBACK_MAX_PER_METRIC, so a single
-    bad metric cannot fill every slot and hide the other faults the scorer
-    found. See the note on that constant in config.py.
+    A pair above the threshold is good enough not to flag, so a clean rep
+    legitimately produces zero items and therefore no markers. That is a
+    deliberate state, not an empty container to be filled with filler.
     """
     candidates = []
 
@@ -95,21 +95,13 @@ def build_feedback(phases: list[dict], tolerances: dict) -> list[dict]:
                 "worst_frame": int(worst) if worst is not None else int(p["start"]),
             })
 
-    # Severity decides the order; the per-metric cap decides who gets a slot.
-    # Sorting on the metric key as a tiebreak keeps the output deterministic
-    # when two pairs score identically — which self-comparison would otherwise
-    # leave to dict ordering.
+    # Every surviving pair is returned — the list is not truncated. The UI draws
+    # a marker per item, and the timeline is meant to show one wherever a metric
+    # is yellow or red in a phase, so any cap here would silently hide a fault
+    # the scorer found. FEEDBACK_SUPPRESS_ABOVE is the only gate.
+    #
+    # Severity still decides the order, so the worst item leads in a grouped
+    # hover tip. Sorting on the keys as a tiebreak keeps the output deterministic
+    # when two pairs score identically, which dict ordering would not.
     candidates.sort(key=lambda c: (-c["severity"], c["metric"], c["phase"]))
-
-    chosen: list[dict] = []
-    per_metric: dict[str, int] = {}
-    for item in candidates:
-        if len(chosen) >= config.FEEDBACK_TOP_N:
-            break
-        seen = per_metric.get(item["metric"], 0)
-        if seen >= config.FEEDBACK_MAX_PER_METRIC:
-            continue
-        per_metric[item["metric"]] = seen + 1
-        chosen.append(item)
-
-    return chosen
+    return candidates

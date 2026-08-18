@@ -265,26 +265,40 @@ faults stop producing them, the dial has gone too soft.
 
 ### How much feedback appears
 
-Three constants downstream of the dial decide how much of what the scorer found actually
-reaches you:
+One constant:
 
 ```python
 FEEDBACK_SUPPRESS_ABOVE = 80.0   # a metric scoring above this in a phase is not flagged
-FEEDBACK_TOP_N          = 5      # most items rendered
-FEEDBACK_MAX_PER_METRIC = 2      # most items about any one metric
 ```
 
-`FEEDBACK_SUPPRESS_ABOVE` is matched to `GRADE_GOOD` in `frontend/src/lib/grade.ts`, so a
-metric card reads green exactly when the engine stays silent about it. **Move the two
-together** or the UI will say one thing and the feedback another.
+Every `(metric, phase)` pair at or below it becomes a timeline marker — the list is **not
+truncated**. It was once capped (top 5, at most 2 per metric) back when feedback was a
+written list that had to stay short; markers are now the only surface, and a cap there
+hides a fault the scorer found with nothing else on the page to reveal it.
 
-The per-metric cap exists because severity order alone let one metric take every slot: on a
-real upload all three went to `torso_tilt`, burying a `lead_knee_angle` at 76.6 and a
-`lead_hip_flexion` at 71.7 that the scorer had already found. Raising `FEEDBACK_TOP_N`
-alone would not have helped — slots four and five would have gone to `torso_tilt` too.
+`FEEDBACK_SUPPRESS_ABOVE` is matched to `GRADE_GOOD` in `frontend/src/lib/grade.ts`, so
+the markers are exactly the yellow and red readings and a green metric card never has a
+marker under it. **Move the two together.**
 
-None of the three can manufacture feedback. Everything still has to fall below the
-suppression threshold first, so a genuinely clean rep produces nothing.
+The threshold cannot manufacture feedback: a genuinely clean rep clears it everywhere and
+produces no markers at all.
+
+### The stance is judged more strictly than the movement
+
+```python
+STATIC_TOLERANCE_SCALE = 0.35
+```
+
+`ready` and `reset` are scored median-against-median, but through bands derived from the
+*kick's* range. A kick's range is enormous next to a held stance — lead hip flexion
+tolerates ±11.3° of full credit, while two people standing in a guard differ by about 2°.
+Unscaled, both phases returned **exactly 100.0 on essentially every upload**, handing out
+13.3% of the total weight as free marks and floating every score upward: a rep whose kick
+phases averaged 75 still came out at 80.
+
+A deviation that is unremarkable mid-kick is meaningful when nothing is moving, so the
+stance gets a tighter band. Raise toward 1.0 for kick-sized tolerances, lower to grade the
+stance harder.
 
 ### Timing is a separate dial
 

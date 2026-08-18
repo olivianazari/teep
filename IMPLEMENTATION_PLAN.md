@@ -402,7 +402,20 @@ compare frame-to-frame. Score them by comparing single numbers:
 delta = |median(metric over phase in B) − median(metric over phase in A)|
 ```
 
-Then through the same tolerance bands. No alignment needed — there is no motion to align.
+Then through the tolerance bands, **scaled by `STATIC_TOLERANCE_SCALE` (0.35)**. No
+alignment needed — there is no motion to align.
+
+> **The scale is new.** Unscaled, these phases returned exactly 100.0 on
+> essentially every upload. The bands are derived from the kick's active-window
+> range, which is vast next to a held stance: `lead_hip_flexion` tolerates ±11.3°
+> of full credit while two people standing in a guard differ by ~2°. That pinned
+> 13.3% of the total weight at full credit and floated every score — a rep whose
+> kick phases averaged 75 still came out at 80, which is exactly the floor a real
+> user hit and correctly disbelieved.
+>
+> A deviation that is unremarkable mid-kick is meaningful when nothing is moving,
+> so the stance is judged on a tighter band than the movement. `TUNABLE`; 1.0
+> restores kick-sized tolerances.
 
 ### 7.6 Phase weights
 
@@ -471,21 +484,20 @@ torso_tilt:
 2. **Suppress any pair whose metric score in that phase is above 80**
    (`FEEDBACK_SUPPRESS_ABOVE`). Above 80 is good enough not to flag.
 3. Rank survivors by `severity_in_tolerance_units × metric_weight × phase_weight`.
-4. Take them in that order, skipping any metric that already has
-   `FEEDBACK_MAX_PER_METRIC` (2) items, until `FEEDBACK_TOP_N` (5) are chosen.
+4. Return **all** of them, worst-first. The list is not truncated.
 
-> **The per-metric cap is new, and `TOP_N` moved 3 → 5.** Severity order alone
-> let one metric take every slot: on a real upload all three went to
-> `torso_tilt` (chamber 55.9, extension 54.0, recovery 67.8), cutting a
-> `lead_knee_angle` at 76.6 and a `lead_hip_flexion` at 71.7 that the scorer
-> had already found. The athlete was told the same thing three times and never
-> heard about the other two — and with the improvements panel gone (§10), a cut
-> item leaves no marker and is therefore completely invisible.
+> **The caps are gone.** There were two — `FEEDBACK_TOP_N` and
+> `FEEDBACK_MAX_PER_METRIC` — sized for a written list that had to stay short.
+> With the improvements panel removed (§10) the markers are the only surface,
+> and the timeline is meant to carry one wherever a metric reads yellow or red.
+> A cap there hides a fault the scorer already found, with nothing else on the
+> page to reveal it.
 >
-> Raising `TOP_N` alone would not have fixed it; slots four and five would have
-> gone to `torso_tilt` as well. The cap is what makes the list representative.
-> It cannot manufacture items — everything still has to clear the ≤80 filter
-> first, so a clean rep still produces nothing.
+> `FEEDBACK_SUPPRESS_ABOVE` is now the only gate, and because it equals
+> `GRADE_GOOD` the marker set is exactly the set of yellow and red readings.
+> Severity still orders the list, so a marker carrying several items leads with
+> the worst. It cannot manufacture items — a clean rep clears the threshold
+> everywhere and produces nothing.
 
 > **80, lowered from 90, to match the UI's green band** (§10.1: green 100–80,
 > yellow 79–60, red 59–0). A card that reads green while the panel still writes
@@ -933,7 +945,7 @@ is silent, these decisions stand:
 
 | Thing | Decision |
 |---|---|
-| `timing_score` | **Computed but not displayed.** The design has no slot for it. §6.4 still forbids merging it into the overall score, and it is in the API. A rep can currently score well while badly mistimed with nothing on screen saying so — the least-bad place to restore it is beside the overall score. |
+| `timing_score` | **Now displayed**, in its own card beside the overall score, with its own grade tint. The design has no slot for it, but a rep scoring well while badly mistimed with nothing on screen saying so was the worse deviation. §6.4 still forbids merging the two numbers, and two tinted cards keep them visibly separate. |
 | Diagnostics (§12) | `detection_rate` / `mean_pelvis_tilt_conf` are in the API but no longer shown. The low-detection **warning** still appears. |
 | Warnings banner | Conditional, so it shifts the layout when it fires. Not in the design, and the improvements panel that could have absorbed it is gone, so it now has nowhere stable to live. |
 | SSE progress | Streamed but not displayed — see the loading state above. |

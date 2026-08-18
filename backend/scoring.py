@@ -225,11 +225,17 @@ class Scorer:
         if b_idx.size == 0 or a_med is None:
             return None
 
+        # Tighter bands than the moving phases use. The derived tolerances are
+        # sized to the kick's range, which is enormous next to a held stance —
+        # applied unscaled they returned 100.0 here on essentially every rep.
+        # See STATIC_TOLERANCE_SCALE in config.py.
+        scale = config.STATIC_TOLERANCE_SCALE
+
         ms, ds, worst = {}, {}, {}
         for key in config.METRICS:
             tol = self.ref.tolerances[key]
             ds[key] = float(np.nanmedian(self.b_vals[key][b_idx])) - a_med[key]
-            ms[key] = band_score(ds[key], tol["full"], tol["zero"])
+            ms[key] = band_score(ds[key], tol["full"] * scale, tol["zero"] * scale)
             # Scored on medians, but for "show me" purposes point at the frame
             # that sits furthest from the reference's median.
             offsets = np.abs(self.b_vals[key][b_idx] - a_med[key])

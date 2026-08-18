@@ -254,8 +254,7 @@ def test_knee_direction_words_are_not_inverted():
     texts = {f["metric"]: f["text"] for f in build_feedback([phase], tol)}
     assert "more bent" in texts["lead_knee_angle"]
 
-
-def test_feedback_suppresses_good_scores_and_caps_the_list():
+def test_feedback_suppresses_good_scores():
     from backend.feedback import build_feedback
 
     tol = {k: {"full": 4.0, "zero": 12.0} for k in config.METRICS}
@@ -267,38 +266,84 @@ def test_feedback_suppresses_good_scores_and_caps_the_list():
     }
     assert build_feedback([good], tol) == []
 
-    bad = [
-        {"name": n, "weight": 0.2, "start": 40, "end": 47,
-         "metric_scores": {k: 10.0 for k in config.METRICS},
-         "metric_deltas": {k: 9.0 for k in config.METRICS},
-         "metric_worst_frame": {k: 44 for k in config.METRICS}}
-        for n in ("chamber", "extension", "retraction")
-    ]
-    assert len(build_feedback(bad, tol)) == config.FEEDBACK_TOP_N
 
-
-def test_feedback_caps_items_per_metric():
+def test_feedback_returns_every_yellow_or_red_pair():
     """
-    One bad metric must not fill the whole list.
+    One marker per yellow/red reading — the list is not truncated.
 
-    Only torso_tilt is out of tolerance here, and it is out of tolerance in
-    more phases than FEEDBACK_MAX_PER_METRIC allows. Without the cap it would
-    take every slot — which is what it did on a real upload, hiding a
-    lead_knee_angle and a lead_hip_flexion the scorer had already found.
+    It was once capped (top 5, at most 2 per metric) to keep a written list
+    short. That list no longer exists: feedback surfaces only as timeline
+    markers, and a cap there hides a fault the scorer found with nothing else
+    on the page to reveal it.
     """
     from backend.feedback import build_feedback
 
     tol = {k: {"full": 4.0, "zero": 12.0} for k in config.METRICS}
     phases = [
         {"name": n, "weight": 0.2, "start": 40, "end": 47,
-         "metric_scores": {k: (10.0 if k == "torso_tilt" else 95.0) for k in config.METRICS},
+         "metric_scores": {k: 10.0 for k in config.METRICS},
          "metric_deltas": {k: 9.0 for k in config.METRICS},
          "metric_worst_frame": {k: 44 for k in config.METRICS}}
         for n in ("chamber", "extension", "retraction", "recovery")
     ]
     items = build_feedback(phases, tol)
 
-    assert [i["metric"] for i in items] == ["torso_tilt"] * config.FEEDBACK_MAX_PER_METRIC
-    # The phases it kept are distinct — the cap trims the list, it does not
-    # collapse it onto one phase.
-    assert len({i["phase"] for i in items}) == len(items)
+    assert len(items) == len(config.METRICS) * len(phases)
+    assert {(i["metric"], i["phase"]) for i in items} == {
+        (k, ph["name"]) for k in config.METRICS for ph in phases
+    }
+    # Still ranked worst-first, so a grouped hover tip leads with the worst.
+    assert [i["severity"] for i in items] == sorted(
+        (i["severity"] for i in items), reverse=True
+    )
+
+
+def test_feedback_ranking_is_deterministic():
+    """Equal severities must not fall back on dict ordering."""
+    from backend.feedback import build_feedback
+
+    tol = {k: {"full": 4.0, "zero": 12.0} for k in config.METRICS}
+    phases = [
+        {"name": n, "weight": 0.2, "start": 40, "end": 47,
+         "metric_scores": {k: 10.0 for k in config.METRICS},
+         "metric_deltas": {k: 9.0 for k in config.METRICS},
+         "metric_worst_frame": {k: 44 for k in config.METRICS}}
+        for n in ("chamber", "extension")
+    ]
+    first = [(i["metric"], i["phase"]) for i in build_feedback(phases, tol)]
+    for _ in range(3):
+        assert [(i["metric"], i["phase"]) for i in build_feedback(phases, tol)] == first
+
+
+def test_static_phases_use_a_tighter_band():
+    """
+    ready/reset must not hand out free marks.
+
+    Their tolerances are derived from the kick's active-window range, which is
+    vast next to a held stance — unscaled, both phases returned exactly 100.0
+    on essentially every upload, pinning 13.3% of the total weight at full
+    credit. STATIC_TOLERANCE_SCALE is what makes them discriminate.
+    """
+    from backend import scoring
+
+    assert 0 < config.STATIC_TOLERANCE_SCALE < 1.0
+
+    full, zero = 11.3, 38.3
+    delta = full * 0.8
+    # Full credit while moving...
+    assert scoring.band_score(delta, full, zero) == 100.0
+    # ...but not while standing still.
+    scaled = scoring.band_score(
+        delta,
+        full * config.STATIC_TOLERANCE_SCALE,
+        zero * config.STATIC_TOLERANCE_SCALE,
+    )
+    assert scaled < 100.0
+
+    # Zero deviation is full credit at any scale — this is what keeps the
+    # self-comparison gate at exactly 100.0.
+    assert scoring.band_score(
+        0.0,
+        full * config.STATIC_TOLERANCE_SCALE,
+        zero * config.STATIC_TOLERANCE_SCALE,
+    ) == 100.0

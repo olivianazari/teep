@@ -116,6 +116,22 @@ ZERO_CREDIT_FRAC = 0.44
 FULL_CREDIT_FLOOR = 7.0
 ZERO_CREDIT_FLOOR = 22.0
 
+# Static phases (ready/reset) get their bands multiplied by this.
+#
+# Those phases are scored median-against-median, but through tolerances derived
+# from the *kick's* active-window range — and a kick's range is enormous next to
+# a held stance. lead_hip_flexion tolerates +-11.3 deg of full credit, while two
+# people standing in a guard differ by ~2 deg. The result was that ready and
+# reset returned exactly 100.0 on essentially every upload, handing out 13.3% of
+# the total weight as free marks and floating every score upward: a rep whose
+# kick phases averaged 75 still came out at 80.
+#
+# A deviation that is unremarkable mid-kick is meaningful when nothing is
+# moving, so the stance is judged on a tighter band than the movement. Raise
+# toward 1.0 to go back to kick-sized tolerances; lower to grade the stance
+# harder.
+STATIC_TOLERANCE_SCALE = 0.35
+
 # ---------------------------------------------------------------------------
 # Phases (spec §7.6)
 # ---------------------------------------------------------------------------
@@ -217,20 +233,13 @@ WARP_RUN_PENALTY = 0.8
 # would be telling the athlete two different things about the same number.
 # Keep this in step with GRADE_GOOD in frontend/src/lib/grade.ts.
 FEEDBACK_SUPPRESS_ABOVE = 80.0
-FEEDBACK_TOP_N = 5
-
-# At most this many items about the same metric.
+# No cap on how many items are rendered.
 #
-# Ranking by severity alone lets one bad metric take every slot: on a real
-# upload all three went to torso_tilt (chamber 55.9, extension 54.0, recovery
-# 67.8), burying a lead_knee_angle at 76.6 and a lead_hip_flexion at 71.7 that
-# the scorer had already found. The athlete was told the same thing three times
-# and never heard about the other two.
-#
-# The cap keeps a metric's worst phases — which is the useful part — while
-# leaving room for a different fault to be named. Raising TOP_N alone would not
-# have fixed it: the fourth and fifth slots would have gone to torso_tilt too.
-FEEDBACK_MAX_PER_METRIC = 2
+# There was one (top 5, at most 2 per metric) to keep a written list short. The
+# list is gone; feedback now surfaces only as timeline markers, and the timeline
+# is meant to show one wherever a metric reads yellow or red. A cap there hides
+# a fault the scorer already found, with nothing else on the page to reveal it.
+# FEEDBACK_SUPPRESS_ABOVE is the only gate.
 
 # ---------------------------------------------------------------------------
 # Guards (spec §12)
