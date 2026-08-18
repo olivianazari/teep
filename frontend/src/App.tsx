@@ -12,6 +12,7 @@ import playingIcon from '@/assets/figma/transport-playing.svg'
 import prevIcon from '@/assets/figma/transport-prev.svg'
 import uploadIcon from '@/assets/figma/upload-placeholder.svg'
 import { AnalyticsStrip } from '@/components/AnalyticsStrip'
+import { DeviationSummary } from '@/components/DeviationSummary'
 import { IconButton } from '@/components/IconButton'
 import { PhaseLegend } from '@/components/PhaseLegend'
 import { Timelines } from '@/components/Timelines'
@@ -266,10 +267,23 @@ export default function App() {
         </Alert>
       )}
 
+      {/* ---- biggest deviation ----
+          The one reading that drove the score down, said outright. The timeline
+          markers carry every yellow and red pair, but they are all the same size
+          and only give up their sentence on hover, so the worst is no more
+          visible than the fifth. */}
+      <DeviationSummary
+        result={result}
+        onSeek={(f) => {
+          setPlaying(false)
+          videoA.current?.pause()
+          seekB(f)
+        }}
+      />
+
       {/* ---- videos ----
-          The improvements panel is gone from this revision. Its content has not
-          been lost: every item is still reachable from the alert markers on the
-          timeline, which carry the same sentence and jump to the same frame. */}
+          Every item is also reachable from the alert markers on the timeline,
+          which carry the same sentence and jump to the same frame. */}
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-[10px]">
         <VideoPane
           label="you"
