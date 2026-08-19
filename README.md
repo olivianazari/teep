@@ -7,6 +7,19 @@ Everything runs locally. No cloud, no API keys, no network access at runtime.
 
 ---
 
+## What you need
+
+| | |
+|---|---|
+| **OS** | macOS 11+ (Intel or Apple Silicon), Linux x86_64, or Windows 64-bit |
+| **Python** | none preinstalled — `uv` fetches the pinned 3.11 itself |
+| **Network** | first run only, to install dependencies |
+| **Disk** | ~700 MB once installed, mostly mediapipe and its companions |
+
+Not supported: **ARM Linux** (Raspberry Pi, ARM servers). MediaPipe publishes no
+`aarch64` Linux wheel for this version, so the install fails there with no workaround
+short of building MediaPipe from source.
+
 ## Run it
 
 ```bash
@@ -15,29 +28,47 @@ uv run run.py
 
 That starts the server and opens a browser at <http://localhost:8000>. Stop with ctrl-c.
 
-`uv` installs the pinned Python (3.11) and every dependency on first run; there is no
-environment to manage. If you don't have `uv`:
+The first run creates `.venv/`, downloads the pinned Python 3.11 and every dependency, and
+takes a few minutes. Later runs start in seconds.
+
+`--no-browser` suppresses opening a tab, `--port N` moves it off 8000.
+
+### Installing uv
+
+If `uv` is not already on your machine:
 
 ```bash
-python3 -m pip install --user uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-That installs to `~/Library/Python/3.x/bin` on macOS, which is **not on `PATH` by
-default** — `uv: command not found` after a successful install means exactly this. Either
-add it:
+On Windows, in PowerShell:
 
 ```bash
-echo 'export PATH="$HOME/Library/Python/3.9/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-or skip `uv` entirely once the environment exists and run the interpreter directly:
+Or with Homebrew, `brew install uv`. These put `uv` on your `PATH` for you.
 
-```bash
-.venv/bin/python3 run.py
-```
+Installing it with `pip install --user uv` instead **does not** — pip's user bin directory
+(`~/Library/Python/3.x/bin` on macOS, `~/.local/bin` on Linux) is off `PATH` by default, and
+`uv: command not found` after a successful install means exactly that. Either add the
+directory to `PATH` or use one of the installers above.
 
-Both start the same server. `--no-browser` suppresses opening a tab, `--port N` moves it
-off 8000.
+## Filming a teep it can score
+
+The app makes no attempt to validate these. A clip that breaks them is not rejected — it is
+scored wrongly, which is worse.
+
+- **Left-legged teep.** The reference kicks with the left leg, and anything else is
+  **refused outright**. There is no mirroring: comparing sign-flipped columns would produce
+  a confidently wrong score. A right-legged athlete needs their own reference clip
+  (see *Regenerating the reference*).
+- **Side profile**, camera perpendicular to the direction of the kick.
+- **Fixed camera** — no panning, no handheld drift.
+- **Whole body in frame** for the entire clip, feet included.
+- **One person in frame.** A second body in shot pulls the pose detector onto whoever it
+  finds more convincing.
+- A second or two of stillness before and after, so `ready` and `reset` have frames to score.
 
 ### Offline
 
@@ -47,7 +78,8 @@ The app never reaches the network at runtime:
   `backend: "legacy"`), so there is nothing to download;
 - the frontend bundle in `dist/` is self-contained, fonts included.
 
-Only the very first `uv run` needs the network, to install dependencies.
+Only the very first `uv run` needs the network, to install dependencies. After that you
+can disconnect entirely and it still works.
 
 ---
 
